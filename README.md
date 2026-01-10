@@ -74,6 +74,18 @@ Extracts from Google Gemini CLI
   - Model information
   - Project hash and workspace linking
 
+### 8. `extract_opencode.py`
+Extracts from OpenCode CLI
+- **Searches**: `~/.local/share/opencode/storage/`, `~/.config/opencode/storage/`
+- **Formats**: JSON files (fragmented storage: project, session, message, part)
+- **Includes**:
+  - User/assistant messages with agent identity
+  - Reasoning metadata with subject categorization
+  - Token usage per message
+  - Model information
+  - Project path (cwd) and workspace linking
+  - Part-level timestamps for latency analysis
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -104,6 +116,9 @@ python3 extract_windsurf.py
 # Extract from Gemini CLI
 python3 extract_gemini.py
 
+# Extract from OpenCode
+python3 extract_opencode.py
+
 # Extract from ALL tools at once
 ./extract_all.sh
 ```
@@ -119,7 +134,8 @@ extracted_data/
 ├── gemini_conversations_20250116_143145.jsonl
 ├── codex_conversations_20250116_143102.jsonl
 ├── trae_conversations_20250116_143115.jsonl
-└── windsurf_conversations_20250116_143130.jsonl
+├── windsurf_conversations_20250116_143130.jsonl
+└── opencode_conversations_20250116_143200.jsonl
 ```
 
 ## 📊 Output Format
@@ -205,6 +221,15 @@ Each script follows this pattern:
 - **Format**: Hybrid (JSONL + SQLite)
 - **Location**: Similar to VSCode/Cursor structure
 - **Structure**: VSCode extension data format
+
+#### OpenCode
+- **Format**: Fragmented JSON files (one file per entity)
+- **Location**: `~/.local/share/opencode/storage/`
+- **Structure**: Relational hierarchy across directories:
+  - `project/{id}.json` - Project metadata (cwd, name)
+  - `session/{project_id}/{id}.json` - Session metadata
+  - `message/{session_id}/{id}.json` - Message metadata
+  - `part/{message_id}/{id}.json` - Content parts (text, reasoning)
 
 ## 🎓 Understanding the Data
 
@@ -446,6 +471,11 @@ conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
 ### Codex
 - ✅ Rollout JSONL format
 - ✅ Time-based session organization
+
+### OpenCode
+- ✅ Fragmented JSON storage (project/session/message/part)
+- ✅ Cross-platform discovery (macOS, Linux, Windows)
+- ✅ Reasoning metadata with subject categorization
 
 ## 📈 Performance Tips
 
