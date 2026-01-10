@@ -6,6 +6,12 @@ Supports: CLI (JSON files) and Desktop (Tauri .dat files)
 Storage locations:
 - CLI: ~/.local/share/opencode/storage/ (Linux/macOS)
 - Desktop: Platform-specific Tauri app data directories
+
+Features:
+- Extracts conversations from sessions WITH and WITHOUT metadata files
+- Reconstructs session metadata (directory, title, timestamps) from message content
+- Assembles complete messages from message metadata + parts
+- Handles sessions where session files are missing or corrupted
 """
 
 import json
@@ -121,39 +127,111 @@ def read_tauri_store(dat_file):
         print(f"Error reading Tauri store {dat_file}: {e}")
         return {}
 
+def extract_directory_from_content(text):
+    """
+    Try to extract a directory path from text content (e.g., tool commands).
+    Looks for common patterns like 'cd /path/to/dir' or paths in commands.
+    """
+    if not text:
+        return None
+    
+    import re
+    
+    # Pattern 1: cd command followed by path
+    cd_pattern = r'cd\s+(["\']?)([^\s\'"]+)\1'
+    matches = re.findall(cd_pattern, text)
+    for match in matches:
+        path = match[1] if isinstance(match, tuple) else match
+        if path and (path.startswith('/') or path.startswith('~') or path[1:].startswith(':')):
+            return path
+    
+    # Pattern 2: Common working directory indicators
+    cwd_pattern = r'(?:working\s+)?directory[:\s]+(["\']?)([^\s\'"]+)\1'
+    matches = re.findall(cwd_pattern, text)
+    for match in matches:
+        path = match[1] if isinstance(match, tuple) else match
+        if path and (path.startswith('/') or path.startswith('~') or path[1:].startswith(':')):
+            return path
+    
+    # Pattern 3: Extract absolute paths (Unix-style)
+    abs_path_pattern = r'(?:^|\s|/)(/[^/\s\'"]{2,})'
+    matches = re.findall(abs_path_pattern, text)
+    for path in matches:
+        if path and len(path) > 3 and not path.endswith('.') and not path.endswith('..'):
+            return path
+    
+    return None
+
+
+def extract_project_id_from_content(text):
+    """
+    Try to extract a project ID from text content.
+    Often appears in tool commands or git operations.
+    """
+    if not text:
+        return None
+    
+    import re
+    
+    # Pattern: project IDs in commands
+    project_pattern = r'(?:project[-_]?id|project)[=:\s]+([a-zA-Z0-9_-]+)'
+    match = re.search(project_pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    
+    return None
+
+
 def extract_cli_conversations(storage_dir):
-    """Extract conversations from CLI JSON storage"""
+    """
+    Extract conversations from CLI JSON storage.
+    
+    Handles sessions both WITH and WITHOUT session metadata files.
+    For sessions without metadata, reconstructs session info from messages/parts.
+    """
     conversations = []
     
-    session_dir = storage_dir / 'storage' / 'session'
     message_dir = storage_dir / 'storage' / 'message'
     part_dir = storage_dir / 'storage' / 'part'
     
-    if not session_dir.exists():
+    if not message_dir.exists():
+        print(f"  Message directory not found: {message_dir}")
         return conversations
     
-    # Find all session files
-    session_files = list(session_dir.rglob('ses_*.json'))
+    # Find all session directories (each is a directory named ses_xxx)
+    session_dirs = [d for d in message_dir.iterdir() if d.is_dir() and d.name.startswith('ses_')]
     
-    print(f"  Found {len(session_files)} session files")
+    print(f"  Found {len(session_dirs)} session directories")
     
-    for session_file in session_files:
+    processed_sessions = set()
+    
+    for session_dir_path in session_dirs:
         try:
-            with open(session_file) as f:
-                session_data = json.load(f)
+            session_id = session_dir_path.name
             
-            session_id = session_data.get('id')
-            if not session_id:
+            # Skip if already processed (deduplication)
+            if session_id in processed_sessions:
+                continue
+            processed_sessions.add(session_id)
+            
+            # Try to load session metadata if available
+            session_data = None
+            session_file = storage_dir / 'storage' / 'session' / 'global' / f'{session_id}.json'
+            
+            if session_file.exists():
+                with open(session_file) as f:
+                    session_data = json.load(f)
+            
+            # Collect all messages for this session
+            message_files = sorted(session_dir_path.glob('msg_*.json'))
+            
+            if not message_files:
                 continue
             
-            # Find all messages for this session
-            session_message_dir = message_dir / session_id
-            
-            if not session_message_dir.exists():
-                continue
-            
-            message_files = sorted(session_message_dir.glob('msg_*.json'))
             messages = []
+            all_content = []  # For reconstructing metadata
+            first_message_time = None
+            last_message_time = None
             
             for msg_file in message_files:
                 try:
@@ -162,12 +240,20 @@ def extract_cli_conversations(storage_dir):
                     
                     message_id = msg_data.get('id')
                     role = msg_data.get('role', 'assistant')
+                    msg_time = msg_data.get('time', {}).get('created')
+                    
+                    # Track timestamps
+                    if msg_time:
+                        if not first_message_time or msg_time < first_message_time:
+                            first_message_time = msg_time
+                        if not last_message_time or msg_time > last_message_time:
+                            last_message_time = msg_time
                     
                     # Build the message
                     message = {
                         'role': role,
                         'content': '',
-                        'timestamp': msg_data.get('time', {}).get('created')
+                        'timestamp': msg_time
                     }
                     
                     # Add metadata
@@ -201,9 +287,14 @@ def extract_cli_conversations(storage_dir):
                                     part_data = json.load(f)
                                 
                                 part_type = part_data.get('type')
+                                part_text = part_data.get('text', '')
+                                
+                                # Collect content for metadata reconstruction
+                                if part_text:
+                                    all_content.append(part_text)
                                 
                                 if part_type == 'text':
-                                    content_parts.append(part_data.get('text', ''))
+                                    content_parts.append(part_text)
                                 elif part_type == 'tool' or part_type == 'tool-call':
                                     # OpenCode uses 'tool' type with state containing input/output
                                     state = part_data.get('state', {})
@@ -252,18 +343,26 @@ def extract_cli_conversations(storage_dir):
                     print(f"    Error reading message {msg_file}: {e}")
                     continue
             
-            if messages:
-                conversation = {
-                    'messages': messages,
-                    'source': 'opencode-cli',
-                    'session_id': session_id,
-                    'title': session_data.get('title'),
-                    'created_at': session_data.get('time', {}).get('created'),
-                    'updated_at': session_data.get('time', {}).get('updated'),
-                    'project_id': session_data.get('projectID'),
-                    'directory': session_data.get('directory'),
-                    'version': session_data.get('version')
-                }
+            if not messages:
+                continue
+            
+            # Build conversation - use session data if available, otherwise reconstruct
+            combined_content = '\n'.join(all_content)
+            
+            conversation = {
+                'messages': messages,
+                'source': 'opencode-cli',
+                'session_id': session_id,
+            }
+            
+            if session_data:
+                # Use metadata from session file
+                conversation['title'] = session_data.get('title')
+                conversation['created_at'] = session_data.get('time', {}).get('created')
+                conversation['updated_at'] = session_data.get('time', {}).get('updated')
+                conversation['project_id'] = session_data.get('projectID')
+                conversation['directory'] = session_data.get('directory')
+                conversation['version'] = session_data.get('version')
                 
                 # Add summary stats if available
                 if 'summary' in session_data:
@@ -272,11 +371,34 @@ def extract_cli_conversations(storage_dir):
                 # Add parent session if it's a child session
                 if 'parentID' in session_data:
                     conversation['parent_session_id'] = session_data['parentID']
+            else:
+                # RECONSTRUCT metadata from messages/parts
+                conversation['created_at'] = first_message_time
+                conversation['updated_at'] = last_message_time
                 
-                conversations.append(conversation)
+                # Try to extract directory from content
+                conversation['directory'] = extract_directory_from_content(combined_content)
+                
+                # Try to extract project ID from content
+                conversation['project_id'] = extract_project_id_from_content(combined_content)
+                
+                # Generate a title from first user message
+                for msg in messages:
+                    if msg.get('role') == 'user' and msg.get('content'):
+                        # Take first 100 chars of first user message as title
+                        title = msg['content'][:100].strip()
+                        if len(msg['content']) > 100:
+                            title += '...'
+                        conversation['title'] = title
+                        break
+                
+                # Set default version
+                conversation['version'] = 'unknown'
+            
+            conversations.append(conversation)
         
         except Exception as e:
-            print(f"  Error processing session {session_file}: {e}")
+            print(f"  Error processing session {session_dir_path}: {e}")
             continue
     
     return conversations
@@ -373,7 +495,7 @@ def main():
     
     print(f"✅ Total conversations extracted: {len(all_conversations)}")
     
-    # Calculate statistics
+    # Calculate detailed statistics
     total_messages = sum(len(c['messages']) for c in all_conversations)
     with_tools = sum(1 for c in all_conversations 
                      if any('tool_calls' in m or 'tool_results' in m 
@@ -381,9 +503,15 @@ def main():
     with_models = sum(1 for c in all_conversations
                      if any('model' in m for m in c['messages']))
     
+    # Count sessions with and without metadata
+    with_session_file = sum(1 for c in all_conversations if c.get('directory'))
+    without_session_file = len(all_conversations) - with_session_file
+    
     print(f"Total messages: {total_messages}")
     print(f"With tool use: {with_tools}")
     print(f"With model info: {with_models}")
+    print(f"Full metadata (has session file): {with_session_file}")
+    print(f"Reconstructed (no session file): {without_session_file}")
     print()
     
     # Save
@@ -403,3 +531,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+	
