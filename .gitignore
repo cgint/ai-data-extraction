@@ -26,3 +26,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+node_modules/
+.env
+.ruff_cache/
+.codegiant/
