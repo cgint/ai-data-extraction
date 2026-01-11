@@ -8,6 +8,11 @@ ULTIMATE Cursor extraction - EVERY VERSION, EVERY FORMAT:
 5. Global composers separate (bubbleId:{composer}:{bubble} in global cursorDiskKV)
 
 This gets EVERYTHING from v0.2 through v2.0+
+
+LIMITATIONS:
+- aiService (old format): Assistant responses are not persisted, only summaries
+- Model information: Only available for conversations with modelConfig stored
+  in composerData. Older conversations may not have model information.
 """
 
 import json
@@ -89,17 +94,40 @@ def extract_aiservice_conversations(db_path, workspace_id):
 
                 if i < len(generations):
                     gen = generations[i]
-                    messages.append({
+                    msg = {
                         'role': 'assistant',
                         'content': gen.get('text', gen.get('message', '')),
-                    })
+                    }
+                    # Extract model if available
+                    if 'model' in gen:
+                        msg['model'] = gen['model']
+                    elif 'modelId' in gen:
+                        msg['model'] = gen['modelId']
+                    
+                    messages.append(msg)
 
                 if messages:
-                    conversations.append({
+                    # Try to get model from generation data
+                    model = None
+                    if i < len(generations):
+                        gen = generations[i]
+                        if isinstance(gen, dict):
+                            model = gen.get('model') or gen.get('modelId') or gen.get('modelName')
+                    
+                    # Add model to assistant messages
+                    for msg in messages:
+                        if isinstance(msg, dict) and msg.get('role') == 'assistant':
+                            msg['model'] = model
+                    
+                    conv = {
                         'messages': messages,
                         'source': 'cursor-aiservice',
                         'workspace_id': workspace_id
-                    })
+                    }
+                    if model:
+                        conv['model'] = model
+                    
+                    conversations.append(conv)
 
         conn.close()
     except Exception as e:
@@ -167,6 +195,14 @@ def extract_workspace_composers(db_path, workspace_id):
                                     'content': text
                                 }
 
+                                # Extract model name if available
+                                if 'modelId' in bubble:
+                                    msg['model'] = bubble['modelId']
+                                elif 'model' in bubble:
+                                    msg['model'] = bubble['model']
+                                elif 'modelName' in bubble:
+                                    msg['model'] = bubble['modelName']
+
                                 if 'codeBlocks' in bubble and bubble['codeBlocks']:
                                     msg['code_blocks'] = bubble['codeBlocks']
 
@@ -181,12 +217,21 @@ def extract_workspace_composers(db_path, workspace_id):
                                 messages.append(msg)
 
                         if messages:
+                            # Get model from modelConfig
+                            model = composer_data.get('modelConfig', {}).get('modelName')
+                            
+                            # Add model to all assistant messages
+                            for msg in messages:
+                                if isinstance(msg, dict) and msg.get('role') == 'assistant':
+                                    msg['model'] = model
+                            
                             conversations.append({
                                 'messages': messages,
                                 'source': 'cursor-workspace-composer',
                                 'composer_id': composer_data.get('composerId'),
                                 'name': composer_data.get('name', 'Untitled'),
                                 'workspace_id': workspace_id,
+                                'model': model,
                                 'has_code_context': len(code_contexts) > 0,
                                 'has_diffs': len(diffs) > 0
                             })
@@ -300,6 +345,20 @@ def extract_bubbles_for_composer(cursor, composer_id):
                             msg['code_context'] = ctx
 
                 elif bubble_type == 2:
+                    msg = {
+                        'role': 'assistant',
+                        'content': text,
+                        'bubble_id': key.split(':')[2]
+                    }
+
+                    # Extract model name if available
+                    if 'modelId' in bubble_data:
+                        msg['model'] = bubble_data['modelId']
+                    elif 'model' in bubble_data:
+                        msg['model'] = bubble_data['model']
+                    elif 'modelName' in bubble_data:
+                        msg['model'] = bubble_data['modelName']
+
                     if 'codeBlocks' in bubble_data and bubble_data['codeBlocks']:
                         msg['code_blocks'] = bubble_data['codeBlocks']
 
@@ -381,6 +440,14 @@ def extract_global_composers(global_db_path):
                                 'content': text
                             }
 
+                            # Extract model name if available
+                            if 'modelId' in bubble:
+                                msg['model'] = bubble['modelId']
+                            elif 'model' in bubble:
+                                msg['model'] = bubble['model']
+                            elif 'modelName' in bubble:
+                                msg['model'] = bubble['modelName']
+
                             if 'codeBlocks' in bubble and bubble['codeBlocks']:
                                 msg['code_blocks'] = bubble['codeBlocks']
 
@@ -406,6 +473,14 @@ def extract_global_composers(global_db_path):
                             diffs.extend(msg['diff_histories'])
 
                 if messages:
+                    # Get model from modelConfig
+                    model = data.get('modelConfig', {}).get('modelName')
+                    
+                    # Add model to all assistant messages
+                    for msg in messages:
+                        if isinstance(msg, dict) and msg.get('role') == 'assistant':
+                            msg['model'] = model
+                    
                     conversations.append({
                         'messages': messages,
                         'source': 'cursor-global-composer',
@@ -415,6 +490,7 @@ def extract_global_composers(global_db_path):
                         'unified_mode': data.get('unifiedMode'),
                         'created_at': data.get('createdAt'),
                         'updated_at': data.get('lastUpdatedAt'),
+                        'model': model,
                         'has_code_context': len(code_contexts) > 0,
                         'has_diffs': len(diffs) > 0,
                         'storage_type': 'inline' if inline_conversation else 'separate'
