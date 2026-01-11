@@ -280,6 +280,7 @@ def extract_cli_conversations(storage_dir):
                         content_parts = []
                         tool_calls = []
                         tool_results = []
+                        reasoning_parts = []
                         
                         for part_file in part_files:
                             try:
@@ -325,6 +326,11 @@ def extract_cli_conversations(storage_dir):
                                     code_text = part_data.get('text', '')
                                     language = part_data.get('language', '')
                                     content_parts.append(f"```{language}\n{code_text}\n```")
+                                elif part_type == 'reasoning':
+                                    # Reasoning/thinking content
+                                    reasoning_text = part_data.get('text', '')
+                                    if reasoning_text:
+                                        reasoning_parts.append(reasoning_text)
                                 
                             except Exception as e:
                                 print(f"    Error reading part {part_file}: {e}")
@@ -336,6 +342,8 @@ def extract_cli_conversations(storage_dir):
                             message['tool_calls'] = tool_calls
                         if tool_results:
                             message['tool_results'] = tool_results
+                        if reasoning_parts:
+                            message['reasoning'] = '\n'.join(reasoning_parts)
                     
                     messages.append(message)
                 
@@ -502,6 +510,8 @@ def main():
                            for m in c['messages']))
     with_models = sum(1 for c in all_conversations
                      if any('model' in m for m in c['messages']))
+    with_reasoning = sum(1 for c in all_conversations
+                        if any('reasoning' in m for m in c['messages']))
     
     # Count sessions with and without metadata
     with_session_file = sum(1 for c in all_conversations if c.get('directory'))
@@ -510,6 +520,7 @@ def main():
     print(f"Total messages: {total_messages}")
     print(f"With tool use: {with_tools}")
     print(f"With model info: {with_models}")
+    print(f"With reasoning: {with_reasoning}")
     print(f"Full metadata (has session file): {with_session_file}")
     print(f"Reconstructed (no session file): {without_session_file}")
     print()
