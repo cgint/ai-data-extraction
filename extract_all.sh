@@ -78,6 +78,14 @@ else
 fi
 echo ""
 
+echo "🔍 Extracting from Copilot CLI..."
+if python3 extract_copilot.py 2>&1 | tee extracted_data/copilot_extraction.log | grep -q "Total conversations: [1-9]"; then
+    found_tools+=("Copilot CLI")
+else
+    not_found+=("Copilot CLI")
+fi
+echo ""
+
 echo "================================================================================"
 echo "EXTRACTION SUMMARY"
 echo "================================================================================"

@@ -86,6 +86,17 @@ Extracts from OpenCode CLI
   - Project path (cwd) and workspace linking
   - Part-level timestamps for latency analysis
 
+### 9. `extract_copilot.py`
+Extracts from GitHub Copilot CLI
+- **Searches**: `~/.copilot/`
+- **Formats**:
+  - JSONL session event streams: `~/.copilot/session-state/**/*.jsonl` (preferred)
+  - JSON session summaries: `~/.copilot/history-session-state/session_*.json` (fallback)
+- **Includes**:
+  - User/assistant messages
+  - Tool requests + tool execution results (when available)
+  - Timestamps + session metadata (model, version, etc. when present)
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -119,6 +130,9 @@ python3 extract_gemini.py
 # Extract from OpenCode
 python3 extract_opencode.py
 
+# Extract from Copilot CLI
+python3 extract_copilot.py
+
 # Extract from ALL tools at once
 ./extract_all.sh
 ```
@@ -135,7 +149,8 @@ extracted_data/
 ├── codex_conversations_20250116_143102.jsonl
 ├── trae_conversations_20250116_143115.jsonl
 ├── windsurf_conversations_20250116_143130.jsonl
-└── opencode_conversations_20250116_143200.jsonl
+├── opencode_conversations_20250116_143200.jsonl
+└── copilot_conversations_20250116_143215.jsonl
 ```
 
 ## 📊 Output Format
@@ -230,6 +245,16 @@ Each script follows this pattern:
   - `session/{project_id}/{id}.json` - Session metadata
   - `message/{session_id}/{id}.json` - Message metadata
   - `part/{message_id}/{id}.json` - Content parts (text, reasoning)
+
+#### GitHub Copilot CLI
+- **Format**: JSONL event stream + JSON session summaries
+- **Locations**:
+  - `~/.copilot/session-state/**/*.jsonl` (preferred, richest signal)
+  - `~/.copilot/history-session-state/session_*.json` (fallback summaries)
+  - `~/.copilot/logs/*.log` (diagnostics only; not used for message extraction)
+- **Keys / event types**:
+  - `user.message`, `assistant.message`
+  - `tool.execution_start`, `tool.execution_complete`
 
 ## 🎓 Understanding the Data
 
