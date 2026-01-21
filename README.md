@@ -74,6 +74,22 @@ Extracts from Google Gemini CLI
   - Model information
   - Project hash and workspace linking
 
+### 8. `extract_opencode.py`
+Extracts from OpenCode (CLI + Desktop)
+- **Searches**: 
+  - CLI: `~/.local/share/opencode/storage/` (Linux), `~/Library/Application Support/opencode` (macOS)
+  - Desktop: `~/.local/share/ai.opencode.app` (Linux), `~/Library/Application Support/ai.opencode.app` (macOS)
+- **Formats**: JSON files (sessions/messages/parts) and Tauri .dat files (desktop)
+- **Includes**:
+  - User/assistant messages with full conversation hierarchy
+  - Tool calls and tool results
+  - Code blocks and text content
+  - Token usage and cost tracking
+  - Model and provider information
+  - Agent mode and session metadata
+  - Project directory and version info
+  - Parent/child session relationships
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -101,8 +117,14 @@ python3 extract_trae.py
 # Extract from Windsurf
 python3 extract_windsurf.py
 
+# Extract from Continue
+python3 extract_continue.py
+
 # Extract from Gemini CLI
 python3 extract_gemini.py
+
+# Extract from OpenCode
+python3 extract_opencode.py
 
 # Extract from ALL tools at once
 ./extract_all.sh
@@ -119,7 +141,9 @@ extracted_data/
 ├── gemini_conversations_20250116_143145.jsonl
 ├── codex_conversations_20250116_143102.jsonl
 ├── trae_conversations_20250116_143115.jsonl
-└── windsurf_conversations_20250116_143130.jsonl
+├── windsurf_conversations_20250116_143130.jsonl
+├── continue_conversations_20250116_143145.jsonl
+└── opencode_conversations_20250116_143200.jsonl
 ```
 
 ## 📊 Output Format
