@@ -71,7 +71,7 @@ fi
 echo ""
 
 echo "🔍 Extracting from OpenCode..."
-if python3 extract_opencode.py 2>&1 | tee extracted_data/opencode_extraction.log | grep -q "Total conversations: [1-9]"; then
+if python3 extract_opencode.py 2>&1 | tee extracted_data/opencode_extraction.log | grep -q "Total conversations extracted: [1-9]"; then
     found_tools+=("OpenCode")
 else
     not_found+=("OpenCode")
