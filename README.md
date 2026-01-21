@@ -97,6 +97,9 @@ Extracts from GitHub Copilot CLI
   - Tool requests + tool execution results (when available)
   - Timestamps + session metadata (model, version, etc. when present)
 
+### 10. `session_search.py`
+Searches native session stores (Codex, Gemini CLI, OpenCode CLI, Cursor) and exports a selected match as a normalized single-session JSON file into the current directory.
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -132,6 +135,8 @@ python3 extract_opencode.py
 
 # Extract from Copilot CLI
 python3 extract_copilot.py
+# Search and export a single session
+python3 session_search.py "exact case-sensitive query"
 
 # Extract from ALL tools at once
 ./extract_all.sh
